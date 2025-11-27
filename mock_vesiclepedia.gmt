@@ -1,0 +1,4 @@
+EV_SURFACE	Extracellular Vesicle Surface	CD9	CD63	CD81	TSG101	ALIX
+EXOSOME_CORE	Exosome Core Proteins	HSP70	HSP90	GAPDH	ACTB
+MITOCHONDRIA	Mitochondrial Components	MT-CO1	MT-ND1	CYCS
+NUCLEUS	Nuclear Components	TP53	BRCA1	HIST1H1
