@@ -1,0 +1,4 @@
+*.gmt
+*.txt
+*.pyc
+demo_script.py

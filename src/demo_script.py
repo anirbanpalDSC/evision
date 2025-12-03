@@ -1,5 +1,5 @@
 import pandas as pd
-from ev_core import EVision, create_mock_vesiclepedia_gmt
+from src.vp_pipeline import EVision, create_mock_vesiclepedia_gmt
 
 def run_demo():
     print("--- Starting EVision Demo ---")

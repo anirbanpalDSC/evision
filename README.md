@@ -181,3 +181,6 @@ This project is evolving fast, and community feedback is appreciated.
 📄 License
 
 *TBD*
+
+PRIDE Notes:
+https://www.ebi.ac.uk/pride/markdownpage/prideapi
