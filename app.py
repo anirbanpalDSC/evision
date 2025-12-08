@@ -1,9 +1,11 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import json
+from PIL import Image
 import tempfile
 from io import StringIO
+from pyvis.network import Network
+import streamlit.components.v1 as components
 from src.vp_pipeline import VesiclePediaPipeline
 
 # ---------------------------------------------------------------------
@@ -15,12 +17,15 @@ st.set_page_config(
 )
 
 logo_path = "images/evision.png"
-st.logo(
-    image=logo_path,
-    link="https://github.com/anirbanpalDSC/evision",
-    # Adjust the size (small, medium, large)
-    size="large"
-)
+# st.logo(
+#     image=logo_path,
+#     link="https://github.com/anirbanpalDSC/evision",
+#     # Adjust the size (small, medium, large)
+#     size="large"
+# )
+
+st.image(logo_path, width=100)
+st.markdown("[GitHub Repository](https://github.com/anirbanpalDSC/evision)")
 
 # ---------------------------------------------------------------------
 # Initialize Pipeline in Session
@@ -80,11 +85,91 @@ with st.sidebar.expander("🧬 PRIDE Tools (Coming Soon)", expanded=False):
         """
     )
 
+# =========================================================
+# SEARCHABLE DROPDOWN SPECIES FILTER
+# =========================================================
+
+st.sidebar.divider()
+st.sidebar.header("🌍 Global Species Filter")
+
+# Helper to load data if uploaded directly in sidebar
+def load_sidebar_data(uploaded_file):
+    try:
+        df = pd.read_csv(uploaded_file, sep=None, engine='python', encoding='latin-1', on_bad_lines='skip')
+        df.columns = df.columns.str.upper().str.strip()
+        return df
+    except Exception as e:
+        st.sidebar.error(f"Error reading file: {e}")
+        return None
+
+# Check if metadata is loaded
+if hasattr(pipeline, "merged_dataset") and pipeline.merged_dataset is not None:
+    df = pipeline.merged_dataset
+    
+    # 1. Identify Species Column
+    species_col = next((c for c in df.columns if 'SPECIES' in c), None)
+    
+    if species_col:
+        # Get unique species list
+        all_species = sorted(df[species_col].dropna().unique().tolist())
+        
+        # Add an "All Species" option at the very top
+        search_options = ["All Species"] + all_species
+        
+        # 2. Searchable Dropdown Widget
+        with st.sidebar.expander("⚙️ Filter Settings", expanded=True):
+            # st.selectbox allows typing to filter the list automatically
+            selected_species = st.selectbox(
+                "Select Species (Type to Search):",
+                options=search_options,
+                index=0, # Default to "All Species"
+                key="global_species_selection",
+                help="Select the specific species of your experiment. This refines the background for accurate statistics."
+            )
+         
+            if st.button("Apply Filter", type="primary"):
+                if selected_species == "All Species":
+                    # Use everything
+                    subset = df
+                    st.toast("Using full database (All Species).")
+                else:
+                    # Filter for the ONE specific species
+                    subset = df[df[species_col] == selected_species]
+                
+                # Find the gene column to rebuild the universe
+                gene_col = next((c for c in subset.columns if 'GENE' in c or 'SYMBOL' in c), None)
+                
+                if gene_col:
+                    valid_genes = set(subset[gene_col].dropna().astype(str).str.upper())
+                    
+                    # UPDATE THE PIPELINE UNIVERSE
+                    pipeline.universe = valid_genes
+                    st.session_state['custom_universe'] = valid_genes
+                    
+                    st.success(f"✅ Filter Applied! Analysis restricted to: {selected_species}")
+                    st.caption(f"Universe Size: {len(valid_genes)} genes")
+                else:
+                    st.error("Could not auto-detect gene column.")
+    else:
+        st.sidebar.warning("Loaded data has no 'SPECIES' column.")
+
+else:
+    # Fallback Uploader
+    st.sidebar.info("Upload **Protein/mRNA Details** to enable filtering.")
+    sidebar_file = st.sidebar.file_uploader("📂 Load Metadata", type=["txt", "csv", "tsv"], key="sidebar_uploader")
+    
+    if sidebar_file:
+        with st.spinner("Loading metadata..."):
+            loaded_df = load_sidebar_data(sidebar_file)
+            if loaded_df is not None:
+                pipeline.merged_dataset = loaded_df
+                st.rerun()
+
 # Main mode is driven entirely by Vesiclepedia options for now
 app_mode = vesicle_option
 
 # ---------------------------------------------------------------------
-# 1 — Home
+# Home
 # ---------------------------------------------------------------------
 if app_mode == "🏠 Home":
     st.title("EVision: Extracellular Vesicles Data Analysis Suite")
@@ -106,7 +191,7 @@ if app_mode == "🏠 Home":
     )
 
 # ---------------------------------------------------------------------
-# 2 — Upload & Convert Vesiclepedia Raw Files
+# Upload & Convert Vesiclepedia Raw Files
 # ---------------------------------------------------------------------
 
 elif app_mode == "📥 Upload & Convert Vesiclepedia Files":
@@ -169,6 +254,14 @@ elif app_mode == "📥 Upload & Convert Vesiclepedia Files":
                     f_data.write(data_file.getvalue())
                     data_path = f_data.name
 
+                active_filter = None
+                # Check if the user has selected a specific species in the sidebar
+                if "global_species_selection" in st.session_state:
+                    selection = st.session_state["global_species_selection"]
+                    if selection != "All Species":
+                        active_filter = selection
+                        st.info(f"🧬 Applying Global Filter: Keeping only {active_filter} data.")
+
                 output_gmt = "custom_db.gmt"
                 
                 # Create the mapping dict
@@ -198,32 +291,76 @@ elif app_mode == "📥 Upload & Convert Vesiclepedia Files":
                     st.error(status)
 
 # ---------------------------------------------------------------------
-# 3 — Load GMT Database
+# Load GMT Database (UPDATED WITH TERM INSPECTOR)
 # ---------------------------------------------------------------------
 elif app_mode == "📚 Load GMT Database":
-    st.title("📚 Load Vesiclepedia or Custom GMT File")
+    st.title("📚 Load Gene Sets (GMT)")
 
-    gmt_file = st.file_uploader("Upload GMT File", type=["gmt"])
+    # --- PART A: PERSISTENT STATUS DASHBOARD ---
+    num_sets = len(pipeline.database)
+    
+    st.subheader("Current Database Status")
+    m1, m2 = st.columns(2)
+    m1.metric("Loaded Gene Sets", num_sets)
+    m2.metric("Total Unique Genes", len(pipeline.universe))
+
+    # --- NEW FEATURE: TERM INSPECTOR ---
+    if num_sets > 0:
+        st.divider()
+        st.subheader("🔍 Inspect Specific Term & Copy Genes")
+        st.info("Select a term below to see the genes inside it. Useful for verifying data or creating test lists.")
+
+        # 1. Select a term
+        all_terms = sorted(list(pipeline.database.keys()))
+        selected_term = st.selectbox("Select a Pathway / Term:", all_terms)
+
+        if selected_term:
+            genes_in_term = list(pipeline.database[selected_term])
+            
+            # 2. Show details
+            c1, c2 = st.columns([1, 3])
+            with c1:
+                st.write(f"**ID:** `{selected_term}`")
+                st.write(f"**Count:** {len(genes_in_term)} genes")
+            with c2:
+                desc = pipeline.term_descriptions.get(selected_term, "No description")
+                st.write(f"**Description:** {desc}")
+
+            # 3. Copyable Text Area
+            st.caption("Genes in this set (Copy this list to test the Enrichment Analysis):")
+            st.text_area(
+                "Gene List", 
+                value=", ".join(genes_in_term), 
+                height=150,
+                help="Click inside, press Ctrl+A (Select All) then Ctrl+C (Copy)."
+            )
+
+    st.divider()
+
+    # --- PART B: THE UPLOADER (Keep existing logic) ---
+    st.subheader("Add More Gene Sets")
+    gmt_file = st.file_uploader("Upload GMT File", type=["gmt"], key="gmt_uploader")
 
     if gmt_file:
-        path = "uploaded.gmt"
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(gmt_file.getvalue().decode())
-
-        pipeline.load_gmt(path)
-
-        st.success(f"Loaded {len(pipeline.database)} gene sets.")
-        st.markdown("**Example of first few sets (up to 5 sets, 5 genes each):**")
-        preview = {
-            k: list(v)[:5] for k, v in list(pipeline.database.items())[:5]
-        }
-        st.json(preview)
+        file_hash = hash(gmt_file.getvalue())
+        if "last_loaded_file" not in st.session_state or st.session_state.last_loaded_file != file_hash:
+            path = tempfile.mktemp(suffix=".gmt")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(gmt_file.getvalue().decode())
+            pipeline.load_gmt(path)
+            st.session_state.last_loaded_file = file_hash
+            st.rerun()
+            
+    # Clear Database Button
+    if num_sets > 0:
+        if st.button("🗑️ Clear Database", type="secondary"):
+            pipeline.database = {}
+            pipeline.term_descriptions = {}
+            pipeline.universe = set()
+            st.rerun()
 
 # ---------------------------------------------------------------------
-# 4 — Enrichment Analysis
-# ---------------------------------------------------------------------
-# ---------------------------------------------------------------------
-# 4 — Enrichment Analysis (UPDATED WITH RIGOROUS BACKGROUND)
+# Enrichment Analysis
 # ---------------------------------------------------------------------
 elif app_mode == "🔍 Enrichment Analysis":
     st.title("🔍 Enrichment Analysis")
@@ -245,16 +382,12 @@ elif app_mode == "🔍 Enrichment Analysis":
             """
             <small><b>Why upload a background?</b> To calculate accurate p-values, 
             the statistical model needs to know which genes were <i>screened</i> 
-            but <i>not selected</i>. Usually, this is the full list of all proteins/genes 
-            detected by your instrument.</small>
+            but <i>not selected</i>.</small>
             """, 
             unsafe_allow_html=True
         )
         
-        # Option A: Paste (Good for small lists)
         bg_paste = st.text_area("Option A: Paste Background", height=100)
-        
-        # Option B: Upload (Essential for full genomes/proteomes)
         bg_file = st.file_uploader("Option B: Upload Background File (.txt/.csv)", type=["txt", "csv"])
 
     # Settings
@@ -262,23 +395,17 @@ elif app_mode == "🔍 Enrichment Analysis":
         correction_method = st.selectbox(
             "Multiple Testing Correction", 
             ['fdr_bh', 'bonferroni', 'holm', 'none'],
-            index=0,
-            help="FDR (Benjamini-Hochberg) is standard. Bonferroni is very strict."
+            index=0
         )
         top_n = st.number_input("Top N terms to plot", 5, 50, 15)
 
-    run_btn = st.button("🚀 Run Analysis", type="primary")
-
-    if run_btn:
-        # 1. Parse Interest List
+    # --- ACTION: RUN ANALYSIS ---
+    if st.button("🚀 Run Analysis", type="primary"):
+        # 1. Parse Inputs
         genes = parse_gene_list(gene_text)
-        
-        # 2. Parse Background
         background = []
         
-        # Priority to File Upload (handles 20k+ lines better)
         if bg_file is not None:
-            # Read file as string
             stringio = StringIO(bg_file.getvalue().decode("utf-8"))
             background = parse_gene_list(stringio.read())
             st.success(f"Loaded Custom Universe: {len(background)} genes")
@@ -286,48 +413,117 @@ elif app_mode == "🔍 Enrichment Analysis":
             background = parse_gene_list(bg_paste)
             st.info(f"Loaded Custom Universe (from text): {len(background)} genes")
         else:
-            background = None # Pipeline will default to GMT universe
-            st.warning("⚠️ No background provided. Using default GMT universe (Statistical rigor reduced).")
+            background = None 
 
         if not genes:
             st.error("Please provide at least one gene in the gene list.")
         else:
-            # Pass the correction method and background to the pipeline
-            df = pipeline.run_enrichment(
+            # 2. Run Pipeline
+            df_results = pipeline.run_enrichment(
                 genes, 
                 background_list=background, 
                 correction_method=correction_method
             )
+            
+            # 3. SAVE TO SESSION STATE (The Critical Fix)
+            st.session_state['enrichment_results'] = df_results
+            # We also save the 'top_n' setting used at the time of running, 
+            # though the user can adjust the slider later if we wanted.
+            st.session_state['last_top_n'] = top_n
 
-            if df.empty:
-                st.warning("No enriched terms found (or p-values were not significant).")
-            else:
-                st.subheader("Results Table")
-                # Format p-values for readability
-                display_df = df.copy()
+    # --- VIEW: DISPLAY RESULTS ---
+    # This block runs if results exist in memory, regardless of button press
+    if 'enrichment_results' in st.session_state:
+        df = st.session_state['enrichment_results']
+        
+        # Ensure top_n is consistent
+        current_top_n = st.session_state.get('last_top_n', 15)
+
+        if df.empty:
+            st.warning("No enriched terms found.")
+        else:
+            st.divider()
+            st.subheader("Results")
+            
+            # Formatting for display
+            display_df = df.copy()
+            if 'p_value' in display_df.columns:
                 display_df['p_value'] = display_df['p_value'].map('{:.2e}'.format)
+            if 'adj_p_value' in display_df.columns:
                 display_df['adj_p_value'] = display_df['adj_p_value'].map('{:.2e}'.format)
-                st.dataframe(display_df, use_container_width=True)
+            
+            st.dataframe(display_df, use_container_width=True)
 
-                st.subheader("Visualization")
+            # --- VISUALIZATION TAB ---
+            st.subheader("Visualization")
+            tab1, tab2 = st.tabs(["📊 Bar Chart", "🕸️ Enrichment Map"])
+            
+            with tab1:
                 try:
-                    fig = pipeline.plot_results(df, top_n=top_n)
+                    # Pass top_n dynamically
+                    fig = pipeline.plot_results(df, top_n=current_top_n)
                     if fig is not None:
                         st.plotly_chart(fig, use_container_width=True)
                 except TypeError:
                      st.info("Visuals handled internally.")
 
-                # Download Logic
-                csv = df.to_csv(index=False)
-                st.download_button(
-                    "⬇ Download Full Results",
-                    csv,
-                    "enrichment_results.csv",
-                    "text/csv",
-                )
+            with tab2:
+                col_net1, col_net2 = st.columns(2)
+                with col_net1:
+                    # This slider now works because it is OUTSIDE the button block
+                    sim_threshold = st.slider(
+                        "Edge Similarity Threshold", 
+                        0.0, 1.0, 0.2, 0.05,
+                        key="slider_threshold" # Unique key is good practice
+                    )
+                with col_net2:
+                    physics = st.checkbox("Keep Physics Active", value=False)
+
+                top_df = df.head(current_top_n) 
+                nx_graph = pipeline.build_enrichment_network(top_df, similarity_threshold=sim_threshold)
+                
+                if nx_graph.number_of_nodes() > 0:
+                    net = Network(height="750px", width="100%", bgcolor="#ffffff", font_color="black")
+                    net.from_nx(nx_graph)
+                    
+                    physics_bool = "true" if physics else "false"
+                    
+                    net.set_options(f"""
+                    var options = {{
+                      "physics": {{
+                        "enabled": {physics_bool},
+                        "forceAtlas2Based": {{
+                          "gravitationalConstant": -50,
+                          "centralGravity": 0.01,
+                          "springLength": 100,
+                          "springConstant": 0.08,
+                          "damping": 0.4
+                        }},
+                        "minVelocity": 0.75,
+                        "solver": "forceAtlas2Based"
+                      }}
+                    }}
+                    """)
+
+                    try:
+                        path = tempfile.mktemp(suffix=".html")
+                        net.save_graph(path)
+                        with open(path, 'r', encoding='utf-8') as f:
+                            html_string = f.read()
+                        
+                        components.html(html_string, height=800, scrolling=True)
+                        
+                    except Exception as e:
+                        st.error(f"Error generating network: {e}")
+                else:
+                    st.warning("No nodes to display at this threshold.")
+            
+            # Download
+            csv = df.to_csv(index=False)
+            st.download_button("⬇ Download Results CSV", csv, "enrichment_results.csv", "text/csv")
 
 # ---------------------------------------------------------------------
-# 5 — Compare Two Gene Lists
+# Compare Two Gene Lists
 # ---------------------------------------------------------------------
 elif app_mode == "⚖️ Compare Two Gene Lists":
     st.title("⚖️ Compare Two Gene Sets")
@@ -375,7 +571,7 @@ elif app_mode == "⚖️ Compare Two Gene Lists":
                 st.info("One or both lists had no enriched terms.")
 
 # ---------------------------------------------------------------------
-# 6 — EV QC (MISEV-inspired)
+# EV QC (MISEV-inspired)
 # ---------------------------------------------------------------------
 elif app_mode == "🧪 EV QC (MISEV Marker Check)":
     st.title("🧪 EV QC — MISEV Marker Screening")
@@ -411,7 +607,7 @@ elif app_mode == "🧪 EV QC (MISEV Marker Check)":
                     st.info(f"{label}: None detected")
 
 # ---------------------------------------------------------------------
-# 7 — Build Custom Gene Sets
+# Build Custom Gene Sets
 # ---------------------------------------------------------------------
 elif app_mode == "🔧 Build Custom Gene Sets":
     st.title("🔧 Add Custom Gene Sets")
@@ -432,7 +628,7 @@ elif app_mode == "🔧 Build Custom Gene Sets":
                 st.json({term_name: genes})
 
 # ---------------------------------------------------------------------
-# 8 — Explore Metadata
+# Explore Metadata
 # ---------------------------------------------------------------------
 elif app_mode == "🗂 Explore Metadata":
     st.title("🗂 Vesiclepedia Metadata Explorer")
@@ -464,7 +660,7 @@ elif app_mode == "🗂 Explore Metadata":
         )
 
 # ---------------------------------------------------------------------
-# 9 — About
+# About
 # ---------------------------------------------------------------------
 elif app_mode == "📜 About":
     st.title("📜 About This App")

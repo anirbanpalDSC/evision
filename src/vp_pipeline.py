@@ -5,12 +5,14 @@ from scipy.stats import fisher_exact
 from statsmodels.stats.multitest import multipletests
 import warnings
 import os
+import networkx as nx
+from itertools import combinations
 
 class VesiclePediaPipeline:
     """
     A Python tool for functional enrichment analysis.
     
-    Features:
+    Features:   
     - Fisher's Exact Test for enrichment (Hypergeometric).
     - Benjamini-Hochberg FDR correction.
     - Support for custom databases (GMT format).
@@ -161,8 +163,8 @@ class VesiclePediaPipeline:
             # If saving to HTML, the interactivity is preserved
             fig.write_html(save_path)
             print(f"Interactive plot saved to {save_path}")
-        else:
-            fig.show()
+        
+        return fig
 
     def convert_vesiclepedia_to_gmt(
         self,
@@ -274,18 +276,11 @@ class VesiclePediaPipeline:
         data_file, 
         mapping, 
         output_gmt,
-        sep='\t' # Allow dynamic separator
+        sep='\t',
+        allowed_species=None
     ):
         """
-        Converts ANY two linked files into a GMT based on user column mapping.
-        
-        mapping format:
-        {
-            'id_col_exp': 'User_Column_Name_For_ID_In_Exp_File',
-            'id_col_data': 'User_Column_Name_For_ID_In_Data_File',
-            'gene_col': 'User_Column_Name_For_Genes',
-            'categories': ['List', 'Of', 'Metadata', 'Columns', 'To', 'Group', 'By']
-        }
+        Converts linked files into GMT, optionally filtering by species.
         """
         print(f"Reading files with separator: {repr(sep)}")
         try:
@@ -295,13 +290,16 @@ class VesiclePediaPipeline:
             print(f"Error reading files: {e}")
             return "Error reading files"
 
-        # 1. Standardize the Merge Keys
-        # We rename the user's specific ID columns to a standard 'JOIN_ID'
+        # 1. Standardize Merge Keys
         exp_id = mapping['id_col_exp']
         data_id = mapping['id_col_data']
         
+        # Standardize column names for easier matching
+        exp_df.columns = exp_df.columns.str.strip()
+        data_df.columns = data_df.columns.str.strip()
+        
         if exp_id not in exp_df.columns or data_id not in data_df.columns:
-            return f"Error: ID columns not found. looked for {exp_id} and {data_id}"
+            return f"Error: ID columns not found. Looked for '{exp_id}' and '{data_id}'"
 
         exp_df = exp_df.rename(columns={exp_id: 'JOIN_ID'})
         data_df = data_df.rename(columns={data_id: 'JOIN_ID'})
@@ -309,7 +307,26 @@ class VesiclePediaPipeline:
         # 2. Merge
         print("Merging datasets...")
         merged = pd.merge(data_df, exp_df, on='JOIN_ID', how='inner')
-        self.merged_dataset = merged # Save for metadata explorer
+        
+        if allowed_species:
+            # We try to find the species column automatically to filter
+            species_col = next((c for c in merged.columns if 'SPECIES' in c.upper()), None)
+            if species_col:
+                print(f"Filtering for species: {allowed_species}")
+                # Filter rows where the species column matches our allowed list
+                # If allowed_species is a single string, wrap it in list
+                if isinstance(allowed_species, str):
+                    allowed_species = [allowed_species]
+                    
+                merged = merged[merged[species_col].isin(allowed_species)]
+                
+                if merged.empty:
+                    return f"Error: Filtering for '{allowed_species}' resulted in empty data."
+            else:
+                print("Warning: allowed_species provided but no 'SPECIES' column found in data.")
+        # ---------------------------------
+
+        self.merged_dataset = merged 
         
         # 3. Standardize Gene Column
         gene_col_user = mapping['gene_col']
@@ -326,17 +343,16 @@ class VesiclePediaPipeline:
             if category not in merged.columns:
                 continue
                 
-            # Group by the category
             grouped = merged.groupby(category)[gene_col_user].apply(lambda x: set(x.dropna()))
             
             for group_name, genes in grouped.items():
                 clean_name = str(group_name).strip().replace(" ", "_").upper()
                 clean_category = category.upper().replace(" ", "_")
                 
-                # Create ID: CATEGORY:VALUE (e.g., TISSUE:BRAIN)
                 term_id = f"{clean_category}:{clean_name}"
                 description = f"Genes found in {category}: {group_name}"
                 
+                # Filter invalid genes
                 valid_genes = [str(g).upper() for g in genes if len(str(g)) > 1]
                 
                 if len(valid_genes) >= 5: 
@@ -356,3 +372,56 @@ class VesiclePediaPipeline:
             f.write("EXOSOME_CORE\tExosome Core Proteins\tHSP70\tHSP90\tGAPDH\tACTB\n")
             f.write("MITOCHONDRIA\tMitochondrial Components\tMT-CO1\tMT-ND1\tCYCS\n")
             f.write("NUCLEUS\tNuclear Components\tTP53\tBRCA1\tHIST1H1\n")
+
+    def build_enrichment_network(self, df, similarity_threshold=0.2):
+        """
+        Creates a NetworkX graph where:
+        - Nodes = Enriched Terms
+        - Edges = Significant gene overlap (Jaccard Index > threshold)
+        """
+        G = nx.Graph()
+        
+        # 1. Create Nodes
+        # We use the DataFrame index or Term_ID as the node identifier
+        for _, row in df.iterrows():
+            # Scale node size by significance (-log10 p-value)
+            # We assume -log10(p) is already calculated or we calc it here
+            nlogp = -np.log10(row['p_value']) if row['p_value'] > 0 else 50
+            
+            G.add_node(
+                row['Term_ID'], 
+                title=f"{row['Term_ID']}\nGenes: {row['Count']}\nP: {row['p_value']:.2e}", # Tooltip
+                label=row['Term_ID'],
+                value=nlogp, # Size of node
+                group='Enriched Term'
+            )
+
+        # 2. Create Edges (based on gene overlap)
+        # We need the actual gene sets for these terms. 
+        # The 'Genes' column in your df is a string "GeneA, GeneB". Let's split it back.
+        term_genes = {}
+        for term in df['Term_ID']:
+            # Retrieve from the main database to ensure we have the full set
+            # OR use the 'Genes' col from the df (which is just the intersecting genes)
+            # Using intersecting genes (Genes col) is usually better for 'Contextual Similarity'
+            genes_str = df.loc[df['Term_ID'] == term, 'Genes'].values[0]
+            term_genes[term] = set([g.strip() for g in genes_str.split(',') if g.strip()])
+
+        # Calculate Jaccard Index for every pair
+        terms = list(term_genes.keys())
+        for term_a, term_b in combinations(terms, 2):
+            set_a = term_genes[term_a]
+            set_b = term_genes[term_b]
+            
+            intersection = len(set_a.intersection(set_b))
+            union = len(set_a.union(set_b))
+            
+            if union > 0:
+                jaccard = intersection / union
+                
+                # If overlap is significant, draw an edge
+                if jaccard > similarity_threshold:
+                    # Width of edge depends on how similar they are
+                    G.add_edge(term_a, term_b, weight=jaccard, title=f"Overlap: {jaccard:.2f}")
+
+        return G

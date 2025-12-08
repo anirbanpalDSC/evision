@@ -427,9 +427,6 @@ class PrideEVPipeline:
         plt.xticks(rotation=45)
         plt.show()
 
-
-# --- Execution ---
-
 if __name__ == "__main__":
     pipeline = PrideEVPipeline()
 
