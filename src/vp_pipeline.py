@@ -166,109 +166,110 @@ class VesiclePediaPipeline:
         
         return fig
 
-    def convert_vesiclepedia_to_gmt(
-        self,
-        experiment_file,
-        data_file,
-        output_gmt
-    ):
-        """
-        Converts raw Vesiclepedia text files into a GMT file for FunEnrich.
-        """
-        print(f"Reading {experiment_file}...")
-        try:
-            # Attempt to read Experiment Details
-            # Note: Vesiclepedia files are often tab-delimited
-            exp_df = pd.read_csv(experiment_file, sep='\t', encoding='latin-1', on_bad_lines='skip')
-            exp_df.columns = exp_df.columns.str.upper()
-        except Exception as e:
-            print(f"Error reading experiment file: {e}")
-            return
+    # def convert_vesiclepedia_to_gmt(
+    #     self,
+    #     experiment_file,
+    #     data_file,
+    #     output_gmt
+    # ):
+    #     """
+    #     Converts raw Vesiclepedia text files into a GMT file.
+    #     """
+    #     print(f"Reading {experiment_file}...")
+    #     try:
+    #         # Attempt to read Experiment Details
+    #         # Note: Vesiclepedia files are often tab-delimited
+    #         exp_df = pd.read_csv(experiment_file, sep='\t', encoding='latin-1', on_bad_lines='skip')
+    #         exp_df.columns = exp_df.columns.str.upper()
+    #     except Exception as e:
+    #         print(f"Error reading experiment file: {e}")
+    #         return
 
-        print(f"Reading {data_file}...")
-        try:
-            # Attempt to read Protein/mRNA Details
-            data_df = pd.read_csv(data_file, sep='\t', encoding='latin-1', on_bad_lines='skip')
-            data_df.columns = data_df.columns.str.upper()
-        except Exception as e:
-            print(f"Error reading data file: {e}")
-            return
+    #     print(f"Reading {data_file}...")
+    #     try:
+    #         # Attempt to read Protein/mRNA Details
+    #         data_df = pd.read_csv(data_file, sep='\t', encoding='latin-1', on_bad_lines='skip')
+    #         data_df.columns = data_df.columns.str.upper()
+    #     except Exception as e:
+    #         print(f"Error reading data file: {e}")
+    #         return
 
-        # --- Standardize Column Names ---
-        # Strip whitespace from column headers
-        exp_df.columns = exp_df.columns.str.strip()
-        data_df.columns = data_df.columns.str.strip()
+    #     # --- Standardize Column Names ---
+    #     # Strip whitespace from column headers
+    #     exp_df.columns = exp_df.columns.str.strip()
+    #     data_df.columns = data_df.columns.str.strip()
 
-        print("Merging datasets...")
-        # The common link is typically 'EXPERIMENT ID'
-        if 'EXPERIMENT ID' not in exp_df.columns or 'EXPERIMENT ID' not in data_df.columns:
-            print("Error: Could not find 'EXPERIMENT ID' column in one of the files.")
-            print(f"Exp Cols: {exp_df.columns}")
-            print(f"Data Cols: {data_df.columns}")
-            return
+    #     print("Merging datasets...")
+    #     # The common link is typically 'EXPERIMENT ID'
+    #     if 'EXPERIMENT ID' not in exp_df.columns or 'EXPERIMENT ID' not in data_df.columns:
+    #         print("Error: Could not find 'EXPERIMENT ID' column in one of the files.")
+    #         print(f"Exp Cols: {exp_df.columns}")
+    #         print(f"Data Cols: {data_df.columns}")
+    #         return
 
-        # Merge metadata with gene data
-        merged = pd.merge(data_df, exp_df, on='EXPERIMENT ID', how='inner')
-        self.merged_dataset = merged
+    #     # Merge metadata with gene data
+    #     merged = pd.merge(data_df, exp_df, on='EXPERIMENT ID', how='inner')
+    #     self.merged_dataset = merged
 
-        print(f"Merged dataset has {len(merged)} rows.")
+    #     print(f"Merged dataset has {len(merged)} rows.")
 
-        # --- Define Categories to Create Sets For ---
-        # We want to create gene sets for different metadata categories
-        categories_to_group_by = [
-            'VESICLE TYPE', 
-            'SAMPLE NAME', 
-            'ISOLATION METHOD', 
-            'SPECIES'
-        ]
+    #     # --- Define Categories to Create Sets For ---
+    #     # We want to create gene sets for different metadata categories
+    #     categories_to_group_by = [
+    #         'VESICLE TYPE', 
+    #         'SAMPLE NAME', 
+    #         'ISOLATION METHOD', 
+    #         'SPECIES'
+    #     ]
 
-        gene_col = 'GENE SYMBOL' # Adjust if your file uses 'Gene Name' or 'Entrez ID'
+    #     gene_col = 'GENE SYMBOL' # Adjust if your file uses 'Gene Name' or 'Entrez ID'
         
-        if gene_col not in merged.columns:
-            print(f"Warning: '{gene_col}' not found. Searching for alternatives...")
-            possible_cols = [c for c in merged.columns if 'GENE' in c or 'SYMBOL' in c]
-            if possible_cols:
-                gene_col = possible_cols[0]
-                print(f"Using '{gene_col}' as gene identifier.")
-            else:
-                print("Error: Could not identify a Gene column.")
-                return
+    #     if gene_col not in merged.columns:
+    #         print(f"Warning: '{gene_col}' not found. Searching for alternatives...")
+    #         possible_cols = [c for c in merged.columns if 'GENE' in c or 'SYMBOL' in c]
+    #         if possible_cols:
+    #             gene_col = possible_cols[0]
+    #             print(f"Using '{gene_col}' as gene identifier.")
+    #         else:
+    #             print("Error: Could not identify a Gene column.")
+    #             return
 
-        # --- Build GMT Data ---
-        gmt_lines = []
+    #     # --- Build GMT Data ---
+    #     gmt_lines = []
         
-        print("Building Gene Sets...")
-        for category in categories_to_group_by:
-            if category not in merged.columns:
-                continue
+    #     print("Building Gene Sets...")
+    #     for category in categories_to_group_by:
+    #         if category not in merged.columns:
+    #             print(f"⚠️ Warning: Category '{category}' not found in data. Skipping.")
+    #             continue
                 
-            # Group by the category (e.g., group by "Vesicle Type")
-            grouped = merged.groupby(category)[gene_col].apply(lambda x: set(x.dropna()))
+    #         # Group by the category (e.g., group by "Vesicle Type")
+    #         grouped = merged.groupby(category)[gene_col].apply(lambda x: set(x.dropna()))
             
-            for group_name, genes in grouped.items():
-                # Clean up the group name
-                clean_name = str(group_name).strip().replace(" ", "_").upper()
-                clean_category = category.upper().replace(" ", "_")
+    #         for group_name, genes in grouped.items():
+    #             # Clean up the group name
+    #             clean_name = str(group_name).strip().replace(" ", "_").upper()
+    #             clean_category = category.upper().replace(" ", "_")
                 
-                # Create a unique ID: e.g., VESICLE_TYPE:EXOSOMES
-                term_id = f"{clean_category}:{clean_name}"
+    #             # Create a unique ID: e.g., VESICLE_TYPE:EXOSOMES
+    #             term_id = f"{clean_category}:{clean_name}"
                 
-                # Description
-                description = f"Genes found in {category}: {group_name}"
+    #             # Description
+    #             description = f"Genes found in {category}: {group_name}"
                 
-                # Remove empty strings or invalid genes
-                valid_genes = [g for g in genes if isinstance(g, str) and len(g) > 1]
+    #             # Remove empty strings or invalid genes
+    #             valid_genes = [g for g in genes if isinstance(g, str) and len(g) > 1]
                 
-                if len(valid_genes) > 5: # Only keep sets with at least 5 genes
-                    # GMT Format: ID \t Description \t Gene1 \t Gene2 ...
-                    line = f"{term_id}\t{description}\t" + "\t".join(valid_genes)
-                    gmt_lines.append(line)
+    #             if len(valid_genes) > 5: # Only keep sets with at least 5 genes
+    #                 # GMT Format: ID \t Description \t Gene1 \t Gene2 ...
+    #                 line = f"{term_id}\t{description}\t" + "\t".join(valid_genes)
+    #                 gmt_lines.append(line)
 
-        # --- Write to File ---
-        with open(output_gmt, 'w', encoding='utf-8') as f:
-            f.write("\n".join(gmt_lines))
+    #     # --- Write to File ---
+    #     with open(output_gmt, 'w', encoding='utf-8') as f:
+    #         f.write("\n".join(gmt_lines))
         
-        print(f"Success! Created {output_gmt} with {len(gmt_lines)} gene sets.")
+    #     print(f"Success! Created {output_gmt} with {len(gmt_lines)} gene sets.")
 
     def convert_to_gmt(
         self, 
@@ -276,25 +277,23 @@ class VesiclePediaPipeline:
         data_file, 
         mapping, 
         output_gmt,
-        sep='\t',
-        allowed_species=None
+        sep='\t'
     ):
         """
-        Converts linked files into GMT, optionally filtering by species.
+        Converts linked files into GMT format with hierarchical grouping.
+        When multiple categories are selected, creates gene sets for ALL combinations.
         """
         print(f"Reading files with separator: {repr(sep)}")
         try:
             exp_df = pd.read_csv(experiment_file, sep=sep, encoding='latin-1', on_bad_lines='skip')
             data_df = pd.read_csv(data_file, sep=sep, encoding='latin-1', on_bad_lines='skip')
         except Exception as e:
-            print(f"Error reading files: {e}")
-            return "Error reading files"
+            return f"Error reading files: {e}"
 
         # 1. Standardize Merge Keys
         exp_id = mapping['id_col_exp']
         data_id = mapping['id_col_data']
         
-        # Standardize column names for easier matching
         exp_df.columns = exp_df.columns.str.strip()
         data_df.columns = data_df.columns.str.strip()
         
@@ -304,62 +303,153 @@ class VesiclePediaPipeline:
         exp_df = exp_df.rename(columns={exp_id: 'JOIN_ID'})
         data_df = data_df.rename(columns={data_id: 'JOIN_ID'})
 
-        # 2. Merge
+        # 2. Merge with explicit suffixes
         print("Merging datasets...")
-        merged = pd.merge(data_df, exp_df, on='JOIN_ID', how='inner')
+        merged = pd.merge(data_df, exp_df, on='JOIN_ID', how='inner', suffixes=('_DATA', '_EXP'))
+        print(f"Merged: {len(merged)} rows")
         
-        if allowed_species:
-            # We try to find the species column automatically to filter
+        # 3. Handle duplicate columns - prefer experiment metadata
+        for col in list(merged.columns):
+            if col.endswith('_EXP'):
+                base_col = col.replace('_EXP', '')
+                data_col = f"{base_col}_DATA"
+                
+                if data_col in merged.columns:
+                    merged[base_col] = merged[col]
+                    merged.drop(columns=[col, data_col], inplace=True)
+                    print(f"Resolved duplicate: {base_col} (using _EXP version)")
+
+        species_filter = mapping.get('species_filter', None)
+        if species_filter:
             species_col = next((c for c in merged.columns if 'SPECIES' in c.upper()), None)
             if species_col:
-                print(f"Filtering for species: {allowed_species}")
-                # Filter rows where the species column matches our allowed list
-                # If allowed_species is a single string, wrap it in list
-                if isinstance(allowed_species, str):
-                    allowed_species = [allowed_species]
-                    
-                merged = merged[merged[species_col].isin(allowed_species)]
+                before = len(merged)
+                merged = merged[merged[species_col] == species_filter]
+                after = len(merged)
+                print(f"\n🔬 Species filter applied: {species_filter}")
+                print(f"   Rows: {before} → {after} ({before - after} removed)")
                 
                 if merged.empty:
-                    return f"Error: Filtering for '{allowed_species}' resulted in empty data."
+                    return f"Error: No data remains after filtering for species '{species_filter}'"
             else:
-                print("Warning: allowed_species provided but no 'SPECIES' column found in data.")
-        # ---------------------------------
+                print(f"⚠️ Warning: 'SPECIES' column not found, cannot apply filter")
 
         self.merged_dataset = merged 
         
-        # 3. Standardize Gene Column
+        # 4. Normalize Gene Column
         gene_col_user = mapping['gene_col']
         if gene_col_user not in merged.columns:
-             return f"Error: Gene column '{gene_col_user}' not found in data."
-             
-        # 4. Build GMT
-        gmt_lines = []
-        categories = mapping['categories']
+            gene_col_data = f"{gene_col_user}_DATA"
+            gene_col_exp = f"{gene_col_user}_EXP"
+            
+            if gene_col_data in merged.columns:
+                gene_col_user = gene_col_data
+            elif gene_col_exp in merged.columns:
+                gene_col_user = gene_col_exp
+            else:
+                return f"Error: Gene column '{gene_col_user}' not found"
         
-        print(f"Building sets for categories: {categories}")
+        # Normalize genes
+        merged[gene_col_user] = merged[gene_col_user].astype(str).str.upper().str.strip()
+        merged = merged[merged[gene_col_user].str.len() > 1]
+        print(f"\n🧬 After normalization: {len(merged)} rows, {merged[gene_col_user].nunique()} unique genes")
+        
+        # 5. Find Actual Column Names for Categories
+        categories = mapping['categories']
+        actual_columns = []
+        
+        print(f"\n{'='*60}")
+        print(f"Resolving category columns: {categories}")
+        print(f"{'='*60}\n")
         
         for category in categories:
-            if category not in merged.columns:
+            actual_col = None
+            if category in merged.columns:
+                actual_col = category
+            elif f"{category}_EXP" in merged.columns:
+                actual_col = f"{category}_EXP"
+            elif f"{category}_DATA" in merged.columns:
+                actual_col = f"{category}_DATA"
+            else:
+                print(f"❌ Category '{category}' not found, skipping")
                 continue
-                
-            grouped = merged.groupby(category)[gene_col_user].apply(lambda x: set(x.dropna()))
             
-            for group_name, genes in grouped.items():
-                clean_name = str(group_name).strip().replace(" ", "_").upper()
-                clean_category = category.upper().replace(" ", "_")
+            actual_columns.append(actual_col)
+            print(f"✅ {category} → {actual_col}")
+            
+            # Fill NaN values
+            merged[actual_col] = merged[actual_col].fillna('UNKNOWN')
+            
+            # Show stats
+            unique_count = merged[actual_col].nunique()
+            print(f"   - {unique_count} unique values")
+        
+        if not actual_columns:
+            return "Error: No valid category columns found"
+        
+        # 6. Create Hierarchical Gene Sets
+        print(f"\n{'='*60}")
+        print(f"Creating gene sets for ALL combinations of:")
+        print(f"  {' × '.join([col for col in actual_columns])}")
+        print(f"{'='*60}\n")
+        
+        gmt_lines = []
+        
+        # Group by ALL selected categories at once
+        grouped = merged.groupby(actual_columns)[gene_col_user].apply(lambda x: set(x.dropna()))
+        
+        print(f"📦 Total unique combinations: {len(grouped)}")
+        
+        sets_created = 0
+        sets_skipped = 0
+        
+        for group_tuple, genes in grouped.items():
+            # Handle single category vs multiple
+            if len(actual_columns) == 1:
+                group_values = [group_tuple]
+            else:
+                group_values = list(group_tuple)
+            
+            # Build term ID and description
+            term_parts = []
+            desc_parts = []
+            
+            for i, col_name in enumerate(actual_columns):
+                # Get original category name (without _EXP/_DATA suffix)
+                original_cat = categories[i] if i < len(categories) else col_name
                 
-                term_id = f"{clean_category}:{clean_name}"
-                description = f"Genes found in {category}: {group_name}"
+                value = str(group_values[i]).strip().replace(" ", "_").upper()
+                clean_cat = original_cat.upper().replace(" ", "_")
                 
-                # Filter invalid genes
-                valid_genes = [str(g).upper() for g in genes if len(str(g)) > 1]
+                term_parts.append(f"{clean_cat}_{value}")
+                desc_parts.append(f"{original_cat}:{group_values[i]}")
+            
+            term_id = "__".join(term_parts)
+            description = " AND ".join(desc_parts)
+            
+            valid_genes = list(genes)
+            
+            if len(valid_genes) >= 5:
+                line = f"{term_id}\t{description}\t" + "\t".join(valid_genes)
+                gmt_lines.append(line)
+                sets_created += 1
                 
-                if len(valid_genes) >= 5: 
-                    line = f"{term_id}\t{description}\t" + "\t".join(valid_genes)
-                    gmt_lines.append(line)
-
-        # 5. Write to File
+                # Show first 5 examples
+                if sets_created <= 5:
+                    print(f"  ✅ {term_id}: {len(valid_genes)} genes")
+            else:
+                sets_skipped += 1
+                if sets_skipped <= 3:
+                    print(f"  ⚠️ Skipped {term_id}: {len(valid_genes)} genes")
+        
+        # 7. Summary and Write
+        print(f"\n{'='*60}")
+        print(f"✅ RESULTS:")
+        print(f"  - Gene sets created: {sets_created}")
+        print(f"  - Gene sets skipped: {sets_skipped} (< 5 genes)")
+        print(f"  - Total GMT lines: {len(gmt_lines)}")
+        print(f"{'='*60}\n")
+        
         with open(output_gmt, 'w', encoding='utf-8') as f:
             f.write("\n".join(gmt_lines))
         

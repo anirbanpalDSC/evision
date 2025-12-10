@@ -1,4 +1,5 @@
 import streamlit as st
+import os
 import pandas as pd
 import numpy as np
 from PIL import Image
@@ -24,7 +25,11 @@ logo_path = "images/evision.png"
 #     size="large"
 # )
 
-st.image(logo_path, width=100)
+if os.path.exists(logo_path):
+    st.image(logo_path, width=100)
+else:
+    st.warning("Logo not found. Please add 'images/evision.png' to your project.")
+
 st.markdown("[GitHub Repository](https://github.com/anirbanpalDSC/evision)")
 
 # ---------------------------------------------------------------------
@@ -240,6 +245,31 @@ elif app_mode == "📥 Upload & Convert Vesiclepedia Files":
         st.write("Select categories to create gene sets from:")
         categories = st.multiselect("Metadata Categories", exp_headers, default=[h for h in exp_headers if 'TYPE' in h or 'SPECIES' in h])
 
+        st.divider()
+        st.subheader("🌍 Species Filter (Optional)")
+        st.info("Filter the GMT to a specific species before creating gene sets. Leave as 'All Species' to include everything.")
+        
+        # Quick preview to get species list
+        exp_file.seek(0)
+        exp_preview = pd.read_csv(exp_file, sep=sep_char, encoding='latin-1', on_bad_lines='skip')
+        exp_file.seek(0)
+        
+        species_col = next((c for c in exp_preview.columns if 'SPECIES' in c.upper()), None)
+        
+        if species_col:
+            available_species = sorted(exp_preview[species_col].dropna().unique().tolist())
+            species_options = ["All Species"] + available_species
+            
+            selected_species = st.selectbox(
+                "Select Species:",
+                options=species_options,
+                index=0,
+                help="This will filter the entire dataset before creating gene sets. Recommended for species-specific analysis."
+            )
+        else:
+            st.warning("No 'SPECIES' column found. Filter not available.")
+            selected_species = "All Species"
+
         # --- CONVERSION BUTTON ---
         if st.button("Convert to GMT"):
             if not categories:
@@ -254,38 +284,42 @@ elif app_mode == "📥 Upload & Convert Vesiclepedia Files":
                     f_data.write(data_file.getvalue())
                     data_path = f_data.name
 
-                active_filter = None
-                # Check if the user has selected a specific species in the sidebar
-                if "global_species_selection" in st.session_state:
-                    selection = st.session_state["global_species_selection"]
-                    if selection != "All Species":
-                        active_filter = selection
-                        st.info(f"🧬 Applying Global Filter: Keeping only {active_filter} data.")
-
-                output_gmt = "custom_db.gmt"
+                # Determine output filename based on species
+                if selected_species == "All Species":
+                    output_gmt = "vesiclepedia_all_species.gmt"
+                else:
+                    safe_name = selected_species.replace(" ", "_").lower()
+                    output_gmt = f"vesiclepedia_{safe_name}.gmt"
                 
                 # Create the mapping dict
                 mapping_config = {
                     'id_col_exp': id_col_exp,
                     'id_col_data': id_col_data,
                     'gene_col': gene_col,
-                    'categories': categories
+                    'categories': categories,
+                    'species_filter': None if selected_species == "All Species" else selected_species  # ⭐ NEW
                 }
 
-                # Run the new generic pipeline function
-                status = pipeline.convert_to_gmt(
-                    experiment_file=exp_path,
-                    data_file=data_path,
-                    mapping=mapping_config,
-                    output_gmt=output_gmt,
-                    sep=sep_char
-                )
+                # Run the pipeline function
+                with st.spinner("Converting... This may take a moment."):
+                    status = pipeline.convert_to_gmt(
+                        experiment_file=exp_path,
+                        data_file=data_path,
+                        mapping=mapping_config,
+                        output_gmt=output_gmt,
+                        sep=sep_char
+                    )
 
                 if "Success" in status:
                     st.success(status)
+                    
+                    # Show what was filtered
+                    if selected_species != "All Species":
+                        st.info(f"✅ GMT filtered to: **{selected_species}**")
+                    
                     with open(output_gmt, "rb") as f_out:
                         st.download_button(
-                            "⬇ Download GMT", f_out, "custom_db.gmt"
+                            "⬇ Download GMT", f_out, output_gmt
                         )
                 else:
                     st.error(status)
