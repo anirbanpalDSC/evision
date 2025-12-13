@@ -1,0 +1,15 @@
+{
+  "misev_knowledge_base": {
+    "Positive_Markers": {
+      "Transmembrane": ["CD9", "CD63", "CD81", "CD82", "ITGB1"],
+      "Cytosolic": ["TSG101", "PDCD6IP", "FLOT1", "FLOT2", "HSPA8", "ANXA5"]
+    },
+    "Negative_Controls": {
+      "Nuclear": ["HIST1H1A", "LMNA", "NUP98"],
+      "Mitochondrial": ["CYCS", "TOMM20", "MT-CO1"],
+      "ER_Golgi": ["CANX", "CALR", "GOLGA2", "HSP90B1"],
+      "Plasma_Contaminants": ["ALB", "APOA1", "APOB"],
+      "Cytoskeletal": ["KRT18", "ACTB", "TUBB"]
+    }
+  }
+}

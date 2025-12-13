@@ -64,7 +64,7 @@ with st.sidebar.expander("🧪 Vesiclepedia Tools", expanded=True):
         "Vesiclepedia Modules",
         [
             "🏠 Home",
-            "📥 Upload & Convert Vesiclepedia Files",
+            "📥 Create GMT Database",
             "📚 Load GMT Database",
             "🔍 Enrichment Analysis",
             "⚖️ Compare Two Gene Lists",
@@ -199,7 +199,7 @@ if app_mode == "🏠 Home":
 # Upload & Convert Vesiclepedia Raw Files
 # ---------------------------------------------------------------------
 
-elif app_mode == "📥 Upload & Convert Vesiclepedia Files":
+elif app_mode == "📥 Create GMT Database":
     st.title("📥 Convert Raw Files → GMT")
     st.info("Upload your Experiment Metadata and Protein/mRNA data files.")
 
@@ -613,10 +613,17 @@ elif app_mode == "🧪 EV QC (MISEV Marker Check)":
     qc_text = st.text_area("Paste your EV protein/mRNA list")
 
     core_markers = {"CD9", "CD63", "CD81", "TSG101", "ALIX"}
+    # contaminants = {
+    #     "Mitochondrial": {"MT-CO1", "MT-ND1", "CYCS"},
+    #     "Nuclear": {"TP53", "BRCA1", "HIST1H1"},
+    #     "Cytoskeletal": {"ACTB", "ACTG1", "TUBB"},
+    # }
     contaminants = {
-        "Mitochondrial": {"MT-CO1", "MT-ND1", "CYCS"},
-        "Nuclear": {"TP53", "BRCA1", "HIST1H1"},
-        "Cytoskeletal": {"ACTB", "ACTG1", "TUBB"},
+        "Nuclear": {"HIST1H1A", "LMNA", "NUP98"}, # Nucleus (Debris)
+        "Mitochondrial": {"CYCS", "TOMM20", "MT-CO1"}, # Mitochondria (Debris)
+        "ER_Golgi": {"CANX", "CALR", "GOLGA2", "HSP90B1"}, # Endoplasmic Reticulum (CRITICAL missing piece)
+        "Plasma_Contaminants": {"ALB", "APOA1", "APOB"}, # For blood samples (Albumin/Lipoproteins)
+        "Cytoskeletal": {"KRT18", "ACTB", "TUBB"} # Often variable, but good to flag
     }
 
     if st.button("Run QC Check"):
@@ -690,7 +697,7 @@ elif app_mode == "🗂 Explore Metadata":
     else:
         st.info(
             "Metadata becomes available after converting Vesiclepedia raw files "
-            "using the 'Upload & Convert Vesiclepedia Files' module."
+            "using the 'Create GMT Database' module."
         )
 
 # ---------------------------------------------------------------------
