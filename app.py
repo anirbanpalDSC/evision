@@ -1,13 +1,14 @@
 import streamlit as st
-import os
 import pandas as pd
-import numpy as np
-from PIL import Image
+from pathlib import Path
 import tempfile
+import json
 from io import StringIO
+import plotly.express as px
 from pyvis.network import Network
 import streamlit.components.v1 as components
 from src.vp_pipeline import VesiclePediaPipeline
+from config.project_config import PROJECT_META
 
 # ---------------------------------------------------------------------
 # App Config
@@ -17,20 +18,21 @@ st.set_page_config(
     layout="wide"
 )
 
-logo_path = "images/evision.png"
-# st.logo(
-#     image=logo_path,
-#     link="https://github.com/anirbanpalDSC/evision",
-#     # Adjust the size (small, medium, large)
-#     size="large"
-# )
+# Load MISEV config data
+PROJECT_ROOT = Path(__file__).resolve().parent
+CONFIG_PATH = PROJECT_ROOT / "config" / "misev_config.json"
+if "misev" not in st.session_state:
+    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+        st.session_state.misev = json.load(f)
 
-if os.path.exists(logo_path):
-    st.image(logo_path, width=100)
+logo_path = PROJECT_ROOT / "images" / "evision.png"
+if logo_path.exists():
+    st.image(str(logo_path), width=100)
 else:
     st.warning("Logo not found. Please add 'images/evision.png' to your project.")
 
-st.markdown("[GitHub Repository](https://github.com/anirbanpalDSC/evision)")
+# st.markdown("[GitHub Repository](https://github.com/anirbanpalDSC/evision)")
+# st.subheader("Version 1.0")
 
 # ---------------------------------------------------------------------
 # Initialize Pipeline in Session
@@ -47,12 +49,30 @@ def parse_gene_list(text: str):
     """Parse a comma- or newline-separated gene list into a cleaned list."""
     if not text:
         return []
+    
     genes = [
-        g.strip().upper()
+        g.strip()
+         .replace('"', '')
+         .replace("'", '')
+         .upper()
         for g in text.replace(",", "\n").split("\n")
         if g.strip()
     ]
     return genes
+
+def render_sidebar_footer():
+    st.sidebar.markdown("---")
+    st.sidebar.markdown(
+        f"""
+        <div style="text-align: center; font-size: 12px; color: grey;">
+            <b>{PROJECT_META['name']} v{PROJECT_META['version']}</b><br>
+            Created by {PROJECT_META['author']}<br>
+            <i>{PROJECT_META['affiliation']}</i><br>
+            <a href="{PROJECT_META['github_url']}">GitHub Repository</a>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
 # ---------------------------------------------------------------------
 # Sidebar Navigation
@@ -89,6 +109,8 @@ with st.sidebar.expander("🧬 PRIDE Tools (Coming Soon)", expanded=False):
         - Explore project metadata and QC
         """
     )
+
+render_sidebar_footer()
 
 # =========================================================
 # SEARCHABLE DROPDOWN SPECIES FILTER
@@ -394,6 +416,128 @@ elif app_mode == "📚 Load GMT Database":
             st.rerun()
 
 # ---------------------------------------------------------------------
+# Explore Metadata
+# ---------------------------------------------------------------------
+elif app_mode == "🗂 Explore Metadata":
+    st.title("🗂 Vesiclepedia Metadata Explorer")
+
+    if hasattr(pipeline, "merged_dataset") and pipeline.merged_dataset is not None:
+        df = pipeline.merged_dataset
+        if df.empty:
+            st.warning("Merged metadata is empty. Try re-running the conversion step.")
+        else:
+            st.subheader("Raw Metadata Table")
+            st.dataframe(df)
+
+            st.subheader("Summary Statistics")
+            st.write(df.describe(include="all"))
+
+            # Use only object-type (categorical/string) columns for group by
+            cat_cols = [c for c in df.columns if df[c].dtype == "object"]
+            if cat_cols:
+                category = st.selectbox("Group By", cat_cols)
+                grouped = df.groupby(category).size()
+                st.subheader(f"Counts by {category}")
+                st.bar_chart(grouped)
+            else:
+                st.info("No categorical columns available for grouping.")
+    else:
+        st.info(
+            "Metadata becomes available after converting Vesiclepedia raw files "
+            "using the 'Create GMT Database' module."
+        )
+
+# ---------------------------------------------------------------------
+# EV QC (MISEV-inspired)
+# ---------------------------------------------------------------------
+elif app_mode == "🧪 EV QC (MISEV Marker Check)":
+    st.title("🧪 EV QC — MISEV Marker Screening")
+
+    qc_text = st.text_area("Paste your EV protein/mRNA list")
+    
+    kb = st.session_state.misev["misev_knowledge_base"]
+    core_markers = {
+        gene
+        for category in kb["Positive_Markers"].values()
+        for gene in category
+    }
+
+    contaminants = {
+        label: set(genes)
+        for label, genes in kb["Negative_Controls"].items()
+    }
+
+    if st.button("Run QC Check"):
+        genes = set(parse_gene_list(qc_text))
+
+        if not genes:
+            st.error("Please paste at least one gene.")
+        else:
+            st.subheader("Core EV Markers")
+            core_hits_by_class = {}
+
+            for class_name, geneset in kb["Positive_Markers"].items():
+                hits = genes.intersection(geneset)
+                if hits:
+                    core_hits_by_class[class_name] = sorted(hits)
+
+            if core_hits_by_class:
+                for class_name, hits in core_hits_by_class.items():
+                    st.success(f"{class_name}: {', '.join(hits)}")
+            else:
+                st.warning("No core EV markers detected.")            
+
+            st.subheader("Contamination Markers")
+            total_contaminant_hits = 0
+
+            for label, markers in contaminants.items():
+                hits = genes.intersection(markers)
+                if hits:
+                    total_contaminant_hits += len(hits)
+                    st.warning(f"{label}: {', '.join(sorted(hits))}")
+                else:
+                    st.info(f"{label}: None detected")
+
+            st.subheader("QC Summary")
+            st.markdown("Purity threshold is set for purity score between 0.4 and 0.7")
+
+            num_positive = sum(len(hits) for hits in core_hits_by_class.values())
+            num_negative = total_contaminant_hits
+
+            if num_positive + num_negative > 0:
+                purity_score = num_positive / (num_positive + num_negative)
+            else:
+                purity_score = 0.0
+
+            st.metric("EV Purity Score", f"{purity_score:.2f}")
+
+            if purity_score >= 0.7:
+                st.success("High EV purity. Dataset is suitable for downstream enrichment.")
+            elif purity_score >= 0.4:
+                st.warning("Moderate EV purity. Interpret enrichment results with caution.")
+            else:
+                st.error("Low EV purity. Strong evidence of contamination.")
+
+            summary_df = pd.DataFrame({
+                "Category": ["Positive EV Markers", "Contaminant Markers"],
+                "Count": [num_positive, num_negative]
+            })
+
+            # Graph this
+            fig = px.bar(
+            summary_df,
+            x="Category",
+            y="Count",
+            color="Category",
+            color_discrete_map={
+                "Positive EV Markers": "green",
+                "Contaminant Markers": "lightcoral"
+                }
+            )
+
+            st.plotly_chart(fig, use_container_width=True)
+
+# ---------------------------------------------------------------------
 # Enrichment Analysis
 # ---------------------------------------------------------------------
 elif app_mode == "🔍 Enrichment Analysis":
@@ -605,49 +749,6 @@ elif app_mode == "⚖️ Compare Two Gene Lists":
                 st.info("One or both lists had no enriched terms.")
 
 # ---------------------------------------------------------------------
-# EV QC (MISEV-inspired)
-# ---------------------------------------------------------------------
-elif app_mode == "🧪 EV QC (MISEV Marker Check)":
-    st.title("🧪 EV QC — MISEV Marker Screening")
-
-    qc_text = st.text_area("Paste your EV protein/mRNA list")
-
-    core_markers = {"CD9", "CD63", "CD81", "TSG101", "ALIX"}
-    # contaminants = {
-    #     "Mitochondrial": {"MT-CO1", "MT-ND1", "CYCS"},
-    #     "Nuclear": {"TP53", "BRCA1", "HIST1H1"},
-    #     "Cytoskeletal": {"ACTB", "ACTG1", "TUBB"},
-    # }
-    contaminants = {
-        "Nuclear": {"HIST1H1A", "LMNA", "NUP98"}, # Nucleus (Debris)
-        "Mitochondrial": {"CYCS", "TOMM20", "MT-CO1"}, # Mitochondria (Debris)
-        "ER_Golgi": {"CANX", "CALR", "GOLGA2", "HSP90B1"}, # Endoplasmic Reticulum (CRITICAL missing piece)
-        "Plasma_Contaminants": {"ALB", "APOA1", "APOB"}, # For blood samples (Albumin/Lipoproteins)
-        "Cytoskeletal": {"KRT18", "ACTB", "TUBB"} # Often variable, but good to flag
-    }
-
-    if st.button("Run QC Check"):
-        genes = set(parse_gene_list(qc_text))
-
-        if not genes:
-            st.error("Please paste at least one gene.")
-        else:
-            st.subheader("Core EV Markers")
-            found = genes.intersection(core_markers)
-            if found:
-                st.success(f"Detected markers: {', '.join(sorted(found))}")
-            else:
-                st.warning("No core EV markers detected.")
-
-            st.subheader("Contamination Markers")
-            for label, markers in contaminants.items():
-                hits = genes.intersection(markers)
-                if hits:
-                    st.warning(f"{label}: {', '.join(sorted(hits))}")
-                else:
-                    st.info(f"{label}: None detected")
-
-# ---------------------------------------------------------------------
 # Build Custom Gene Sets
 # ---------------------------------------------------------------------
 elif app_mode == "🔧 Build Custom Gene Sets":
@@ -667,38 +768,6 @@ elif app_mode == "🔧 Build Custom Gene Sets":
                 pipeline.load_custom_dict({term_name: genes})
                 st.success(f"Added custom gene set '{term_name}' (n={len(genes)})")
                 st.json({term_name: genes})
-
-# ---------------------------------------------------------------------
-# Explore Metadata
-# ---------------------------------------------------------------------
-elif app_mode == "🗂 Explore Metadata":
-    st.title("🗂 Vesiclepedia Metadata Explorer")
-
-    if hasattr(pipeline, "merged_dataset") and pipeline.merged_dataset is not None:
-        df = pipeline.merged_dataset
-        if df.empty:
-            st.warning("Merged metadata is empty. Try re-running the conversion step.")
-        else:
-            st.subheader("Raw Metadata Table")
-            st.dataframe(df)
-
-            st.subheader("Summary Statistics")
-            st.write(df.describe(include="all"))
-
-            # Use only object-type (categorical/string) columns for group by
-            cat_cols = [c for c in df.columns if df[c].dtype == "object"]
-            if cat_cols:
-                category = st.selectbox("Group By", cat_cols)
-                grouped = df.groupby(category).size()
-                st.subheader(f"Counts by {category}")
-                st.bar_chart(grouped)
-            else:
-                st.info("No categorical columns available for grouping.")
-    else:
-        st.info(
-            "Metadata becomes available after converting Vesiclepedia raw files "
-            "using the 'Create GMT Database' module."
-        )
 
 # ---------------------------------------------------------------------
 # About
