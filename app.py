@@ -86,11 +86,11 @@ with st.sidebar.expander("🧪 Vesiclepedia Tools", expanded=True):
             "🏠 Home",
             "📥 Create GMT Database",
             "📚 Load GMT Database",
-            "🔍 Enrichment Analysis",
-            "⚖️ Compare Two Gene Lists",
-            "🧪 EV QC (MISEV Marker Check)",
-            "🔧 Build Custom Gene Sets",
             "🗂 Explore Metadata",
+            "🧪 EV QC (MISEV Marker Check)",
+            "🔍 Enrichment Analysis",
+            "⚖️ Compare Two Gene Lists",            
+            "🔧 Build Custom Gene Sets",            
             "📜 About",
         ],
         key="vesiclepedia_option"
@@ -116,81 +116,81 @@ render_sidebar_footer()
 # SEARCHABLE DROPDOWN SPECIES FILTER
 # =========================================================
 
-st.sidebar.divider()
-st.sidebar.header("🌍 Global Species Filter")
+# st.sidebar.divider()
+# st.sidebar.header("🌍 Global Species Filter")
 
-# Helper to load data if uploaded directly in sidebar
-def load_sidebar_data(uploaded_file):
-    try:
-        df = pd.read_csv(uploaded_file, sep=None, engine='python', encoding='latin-1', on_bad_lines='skip')
-        df.columns = df.columns.str.upper().str.strip()
-        return df
-    except Exception as e:
-        st.sidebar.error(f"Error reading file: {e}")
-        return None
+# # Helper to load data if uploaded directly in sidebar
+# def load_sidebar_data(uploaded_file):
+#     try:
+#         df = pd.read_csv(uploaded_file, sep=None, engine='python', encoding='latin-1', on_bad_lines='skip')
+#         df.columns = df.columns.str.upper().str.strip()
+#         return df
+#     except Exception as e:
+#         st.sidebar.error(f"Error reading file: {e}")
+#         return None
 
-# Check if metadata is loaded
-if hasattr(pipeline, "merged_dataset") and pipeline.merged_dataset is not None:
-    df = pipeline.merged_dataset
+# # Check if metadata is loaded
+# if hasattr(pipeline, "merged_dataset") and pipeline.merged_dataset is not None:
+#     df = pipeline.merged_dataset
     
-    # 1. Identify Species Column
-    species_col = next((c for c in df.columns if 'SPECIES' in c), None)
+#     # 1. Identify Species Column
+#     species_col = next((c for c in df.columns if 'SPECIES' in c), None)
     
-    if species_col:
-        # Get unique species list
-        all_species = sorted(df[species_col].dropna().unique().tolist())
+#     if species_col:
+#         # Get unique species list
+#         all_species = sorted(df[species_col].dropna().unique().tolist())
         
-        # Add an "All Species" option at the very top
-        search_options = ["All Species"] + all_species
+#         # Add an "All Species" option at the very top
+#         search_options = ["All Species"] + all_species
         
-        # 2. Searchable Dropdown Widget
-        with st.sidebar.expander("⚙️ Filter Settings", expanded=True):
-            # st.selectbox allows typing to filter the list automatically
-            selected_species = st.selectbox(
-                "Select Species (Type to Search):",
-                options=search_options,
-                index=0, # Default to "All Species"
-                key="global_species_selection",
-                help="Select the specific species of your experiment. This refines the background for accurate statistics."
-            )
+#         # 2. Searchable Dropdown Widget
+#         with st.sidebar.expander("⚙️ Filter Settings", expanded=True):
+#             # st.selectbox allows typing to filter the list automatically
+#             selected_species = st.selectbox(
+#                 "Select Species (Type to Search):",
+#                 options=search_options,
+#                 index=0, # Default to "All Species"
+#                 key="global_species_selection",
+#                 help="Select the specific species of your experiment. This refines the background for accurate statistics."
+#             )
          
-            if st.button("Apply Filter", type="primary"):
-                if selected_species == "All Species":
-                    # Use everything
-                    subset = df
-                    st.toast("Using full database (All Species).")
-                else:
-                    # Filter for the ONE specific species
-                    subset = df[df[species_col] == selected_species]
+#             if st.button("Apply Filter", type="primary"):
+#                 if selected_species == "All Species":
+#                     # Use everything
+#                     subset = df
+#                     st.toast("Using full database (All Species).")
+#                 else:
+#                     # Filter for the ONE specific species
+#                     subset = df[df[species_col] == selected_species]
                 
-                # Find the gene column to rebuild the universe
-                gene_col = next((c for c in subset.columns if 'GENE' in c or 'SYMBOL' in c), None)
+#                 # Find the gene column to rebuild the universe
+#                 gene_col = next((c for c in subset.columns if 'GENE' in c or 'SYMBOL' in c), None)
                 
-                if gene_col:
-                    valid_genes = set(subset[gene_col].dropna().astype(str).str.upper())
+#                 if gene_col:
+#                     valid_genes = set(subset[gene_col].dropna().astype(str).str.upper())
                     
-                    # UPDATE THE PIPELINE UNIVERSE
-                    pipeline.universe = valid_genes
-                    st.session_state['custom_universe'] = valid_genes
+#                     # UPDATE THE PIPELINE UNIVERSE
+#                     pipeline.universe = valid_genes
+#                     st.session_state['custom_universe'] = valid_genes
                     
-                    st.success(f"✅ Filter Applied! Analysis restricted to: {selected_species}")
-                    st.caption(f"Universe Size: {len(valid_genes)} genes")
-                else:
-                    st.error("Could not auto-detect gene column.")
-    else:
-        st.sidebar.warning("Loaded data has no 'SPECIES' column.")
+#                     st.success(f"✅ Filter Applied! Analysis restricted to: {selected_species}")
+#                     st.caption(f"Universe Size: {len(valid_genes)} genes")
+#                 else:
+#                     st.error("Could not auto-detect gene column.")
+#     else:
+#         st.sidebar.warning("Loaded data has no 'SPECIES' column.")
 
-else:
-    # Fallback Uploader
-    st.sidebar.info("Upload **Protein/mRNA Details** to enable filtering.")
-    sidebar_file = st.sidebar.file_uploader("📂 Load Metadata", type=["txt", "csv", "tsv"], key="sidebar_uploader")
+# else:
+#     # Fallback Uploader
+#     st.sidebar.info("Upload **Protein/mRNA Details** to enable filtering.")
+#     sidebar_file = st.sidebar.file_uploader("📂 Load Metadata", type=["txt", "csv", "tsv"], key="sidebar_uploader")
     
-    if sidebar_file:
-        with st.spinner("Loading metadata..."):
-            loaded_df = load_sidebar_data(sidebar_file)
-            if loaded_df is not None:
-                pipeline.merged_dataset = loaded_df
-                st.rerun()
+#     if sidebar_file:
+#         with st.spinner("Loading metadata..."):
+#             loaded_df = load_sidebar_data(sidebar_file)
+#             if loaded_df is not None:
+#                 pipeline.merged_dataset = loaded_df
+#                 st.rerun()
 
 # Main mode is driven entirely by Vesiclepedia options for now
 app_mode = vesicle_option
