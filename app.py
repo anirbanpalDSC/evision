@@ -621,8 +621,8 @@ elif app_mode == "🔍 Enrichment Analysis":
             st.warning("No enriched terms found.")
         else:
             st.divider()
-            st.subheader("Results")
-            
+            st.subheader(f"Results")
+            st.markdown(f"{len(df)} rows")
             # Formatting for display
             display_df = df.copy()
             if 'p_value' in display_df.columns:

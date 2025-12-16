@@ -3,3 +3,4 @@
 *.pyc
 demo_script.py
 test.*
+launch.json

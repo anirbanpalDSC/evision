@@ -115,7 +115,15 @@ class VesiclePediaPipeline:
             return pd.DataFrame()
 
         df = pd.DataFrame(results)
+
+        # FOLD ENRICHMENT
+        # Formula: (Count / Input_Size) / (Term_Size / Background_Size)
+        observed_ratio = df['Count'] / total_interest_count
+        expected_ratio = df['Term_Size'] / total_background_count
         
+        df['Fold_Enrichment'] = observed_ratio / expected_ratio
+        df['Fold_Enrichment'] = df['Fold_Enrichment'].round(2)
+
         reject, pvals_corrected, _, _ = multipletests(df['p_value'], method=correction_method)
         df['adj_p_value'] = pvals_corrected
         
