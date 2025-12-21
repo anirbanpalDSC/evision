@@ -1,0 +1,11 @@
+cff-version: 1.0.0
+message: "If you use EVision in your research, please cite it as below."
+title: "EVision: An Automated Quality Control and Enrichment Engine for EV Omics"
+authors:
+  - family-names: Pal
+    given-names: Anirban
+    orcid: https://orcid.org/0009-0002-5169-9299
+version: 1.0.0
+date-released: 2025-12-01
+url: "https://github.com/anirbanpalDSC/evision/"
+license: CC-BY-4.0

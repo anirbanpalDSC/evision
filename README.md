@@ -2,185 +2,90 @@
   <img src="images/evision.png" width="200" alt="EVision Logo">
 </p>
 
-# 📦 EVision: Extracellular Vesicle Bioinformatics Pipeline
+# 📦 EVision: An Automated Quality Control and Enrichment Engine for EV Omics
 
-*A lightweight, modular pipeline for processing, analyzing, and visualizing extracellular vesicle (EV) cargo datasets from Vesiclepedia. (other sources are being explored)*
+*A lightweight, modular, open-source pipeline for processing, analyzing, and visualizing extracellular vesicle (EV) cargo datasets.*
 
 ## 🌟 Overview
 
-EVision is a Python based pipeline designed to streamline the extraction, transformation, and analysis of extracellular vesicle (EV) molecular cargo data from Vesiclepedia.
-It allows researchers to easily:
-
-* Parse Vesiclepedia export files
-
-* Map identifiers (gene symbols, UniProt, Entrez IDs)
-
-* Generate GMT pathway style files
-
-* Perform enrichment-ready analyses
-
-* Visualize EV protein/RNA distributions
-
-* Build reproducible, modular EV data workflows
-
-The pipeline is intentionally designed to be lightweight and does not require raw proteomics files, enabling fast prototyping and downstream integration with multiomics sources such as PRIDE (WIP).
+EVision is a Python and Streamlit based pipeline designed to bring reproducibility, rigorous quality control, dynamic statistical analysis to extracellular vesicle (EV) research.
 
 ## 🔬 Current Features
 
-### ✅ 1. Vesiclepedia Data Ingestion
+### 🧬 Dynamic ETL Pipeline
 
-* Reads the official Vesiclepedia dataset files
-(e.g., VESICLEPEDIA_EXPERIMENT_DETAILS_5.1.txt, VESICLEPEDIA_PROTEIN_MRNA_DETAILS_5.1.txt)
+* **Schema-Agnostic Ingestion:** Instantly map heterogeneous CSV/Excel/Text files into standardized Gene Matrix Transposed (GMT) formats, or load predefined GMT files for analysis and comparison.
 
-* Automatically detects delimiter, encoding, and structure
+* **Species-Specific Filtering:** Optionally, segregate data by organism (e.g., $Homo sapiens$ vs. $Mus musculus$) to eliminate cross-species noise.
 
-* Cleans and normalizes field names for downstream analysis
+* **Live Updates:** Regenerate your background "gene universe" instantly as new public data becomes available; no more waiting for software patches.
 
-### ✅ 2. Gene Identifier Normalization
+### 🛡️ Automated MISEV Quality Control
 
-* Converts Vesiclepedia identifiers into unified gene symbols
+* **The "Gatekeeper" Module:** Validates purity of the sample before analysis. Uses a MISEV compliant curated dictionary of positive (e.g., CD63, TSG101) and negative (e.g., Albumin, Histones) markers.
+  
+* **Purity Scoring:** Calculates a quantitative "Purity Score" ($0.0 - 1.0$) for every dataset, flagging contaminated samples that could skew enrichment results.
 
-* Uses mygene.info API for robust symbol ↔ Entrez mapping
+### 📊 Robust Statistical Inference
 
-* Handles missing IDs, synonyms, outdated names
+* **Engine:** Performs Over Representation Analysis (ORA) using Fisher’s Exact Test.
 
-### ✅ 3. GMT Database Generation
+* **Correction:** Applies Benjamini–Hochberg False Discovery Rate (FDR) correction by default to control false positives in high-dimensional omics data.
 
-* Creates a Vesiclepedia.gmt file representing:
+* **Context-Aware:** Calculates enrichment against a rigorous, domain-specific and customizable background (the EV proteome) rather than the entire genome.
 
-* One line per experiment
+### 🕸️ Network Visualization
 
-* One gene set per EV study
+* **Enrichment Maps:** Moves beyond static bar charts by projecting results as force-directed network graphs.
 
-* Fully compatible with GSEA, Enrichr, fgsea, and downstream enrichment workflows
+* **Redundancy Reduction:** Uses Jaccard Similarity to cluster related terms (e.g., "Angiogenesis" and "Blood Vessel Development"), revealing high-level biological themes and pathway crosstalk.
 
-Automatically handles:
+## ⚙️ How It Works
 
-* Duplicate genes
+* **Extract:** Upload your raw protein/gene lists or public repository exports.
 
-* Missing annotations
+* **Transform:** EVision maps metadata, filters by species, and applies QC metrics.
 
-* Multiple species (human-only by default)
+* **Load:** The cleaned data defines a custom "Gene Universe" ($N$) for the session.
 
-### ✅ 4. EV Gene/Protein Analysis
-
-The pipeline currently supports:
-
-* Frequency analysis of EV cargo
-
-* Distribution summaries across experiments
-
-* Dataset-wide gene/protein plots
-
-* Disease or sample-type filtering (if present in metadata)
-
-### ✅ 5. Reproducible File Structure
+* **Analyze:** Input your query list to identify statistically over-represented biological functions.
+  
+* **Visualize:** Explore relationships between pathways in an interactive network graph.
 
 ## 🧬 Future Roadmap
 
-This repository is designed to expand into a full EV multi-omics pipeline, including:
 
-### 🔵 PRIDE Integration (Upcoming)
-
-* Automated discovery of EV-related PRIDE (PXD) datasets
-
-* Lightweight download of protein tables (only small metadata, not raw MS files)
-
-* Conversion of PRIDE datasets to GMT format
-
-* Cross-matching PRIDE ↔ Vesiclepedia using PubMed IDs, DOIs, and species/experiment metadata
-
-* Generation of a joint EV gene/protein atlas
-
-### 🟢 Multi-Omics Expansion
-
-* Incorporation of EV RNA, miRNA, lipid, and metabolite layers
-
-* Multi-omics integration (proteome + transcriptome)
-
-* EV-specific network construction
-
-* Pathway and regulatory analysis
-
-### 🔴 Disease-Specific EV Panels (WIP)
-
-* Alzheimer’s EV signatures (CSF, plasma)
-
-* Parkinson’s EV signatures
-
-* Cancer-derived EV signatures
-
-* Cross-dataset comparisons
-
-## 📈 Advanced Visualization (WIP)
-
-* UpSet plots for dataset overlaps
-
-* Heatmaps of EV cargo similarity
-
-* Interactive dashboards (Streamlit / Panel)
-
-## 🚀 Getting Started
-
-1. Clone the repository
-
-`git clone https://github.com/<your-username>/EVision.git`
-
-`cd EVision`
-
-2. Create a virtual environment
-
-`python -m venv venv`
-
-`source venv/bin/activate   # Windows: venv\Scripts\activate`
-
-3. Install dependencies
-
-`pip install -r requirements.txt`
-
-4. Run the Vesiclepedia → GMT converter
-
-`python src/vesiclepedia_converter.py`
-
-This will generate:
-
-`data/vesiclepedia_db.gmt`
-
-5. Explore the example notebook
-
-`jupyter notebook notebooks/EVision_demo.ipynb`
-
-## 📊 Example Output
-
-Generated GMT file
-
-`Experiment_123   Vesiclepedia_Study  APP PSAP CD9 CD81 HSPA8 ...`
-
-`Experiment_124   Vesiclepedia_Study  ALDH1A1 ACTB RAB7A HSP90 ...`
-
-EV Protein Frequency Plot
-
-*WIP*
 
 ## 🧠 Why This Pipeline Matters
 
 Extracellular vesicles carry molecular signatures that reflect disease states, cell-type identity, and intercellular communication pathways.
 However:
 
-* Vesiclepedia provides curated cargo, not raw or standardized datasets.
+* Open databases, e.g. **Vesiclepedia** provides curated cargo, not raw or standardized datasets.
 
-* PRIDE provides raw datasets, but they are large and hard to parse.
+~* PRIDE provides raw datasets, but they are large and hard to parse.
 
 EVision bridges this gap by providing a fast, reproducible, scriptable pipeline for building EV gene sets and enabling downstream enrichment, comparison, and publication-ready analysis — without requiring heavy proteomics tools.
-
+~
 ## 🤝 Contributions
 
 Pull requests, feature requests, and issue reports are welcome!
 This project is evolving fast, and community feedback is appreciated.
 
-📄 License
+## 📄 License
 
-*TBD*
+This project is licensed under the Creative Commons Attribution 4.0
+International (CC BY 4.0) License.
 
-PRIDE Notes:
-https://www.ebi.ac.uk/pride/markdownpage/prideapi
+© 2025 Anirban Pal
+
+~PRIDE Notes:
+https://www.ebi.ac.uk/pride/markdownpage/prideapi~
+
+## 📜 How to Cite
+
+If you use EVision in academic research, publications, or derivative tools,
+please cite:
+
+> Pal, A. (2025). *EVision: An Automated Quality Control and Enrichment Engine for EV Omics*.
+> GitHub repository. https://github.com/yourusername/evision
