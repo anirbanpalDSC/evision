@@ -88,4 +88,4 @@ If you use EVision in academic research, publications, or derivative tools,
 please cite:
 
 > Pal, A. (2025). *EVision: An Automated Quality Control and Enrichment Engine for EV Omics*.
-> GitHub repository. https://github.com/yourusername/evision
+> GitHub repository. https://github.com/anirbanpalDSC/evision/
